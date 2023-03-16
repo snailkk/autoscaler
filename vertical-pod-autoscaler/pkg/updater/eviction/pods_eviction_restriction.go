@@ -149,7 +149,7 @@ func (e *podsEvictionRestrictionImpl) Evict(podToEvict *apiv1.Pod, eventRecorder
 	if podToEvict.Status.Phase != apiv1.PodPending {
 		singleGroupStats, present := e.creatorToSingleGroupStatsMap[cr]
 		if !present {
-			return fmt.Errorf("Internal error - cannot find stats for replication group %v", cr)
+			return fmt.Errorf("internal error - cannot find stats for replication group %v", cr)
 		}
 		singleGroupStats.evicted = singleGroupStats.evicted + 1
 		e.creatorToSingleGroupStatsMap[cr] = singleGroupStats
@@ -163,19 +163,19 @@ func NewPodsEvictionRestrictionFactory(client kube_client.Interface, minReplicas
 	evictionToleranceFraction float64) (PodsEvictionRestrictionFactory, error) {
 	rcInformer, err := setUpInformer(client, replicationController)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create rcInformer: %v", err)
+		return nil, fmt.Errorf("failed to create rcInformer: %v", err)
 	}
 	ssInformer, err := setUpInformer(client, statefulSet)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create ssInformer: %v", err)
+		return nil, fmt.Errorf("failed to create ssInformer: %v", err)
 	}
 	rsInformer, err := setUpInformer(client, replicaSet)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create rsInformer: %v", err)
+		return nil, fmt.Errorf("failed to create rsInformer: %v", err)
 	}
 	dsInformer, err := setUpInformer(client, daemonSet)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create dsInformer: %v", err)
+		return nil, fmt.Errorf("failed to create dsInformer: %v", err)
 	}
 	return &podsEvictionRestrictionFactoryImpl{
 		client:                    client,
@@ -292,7 +292,7 @@ func (f *podsEvictionRestrictionFactoryImpl) getReplicaCount(creator podReplicaC
 		}
 		rc, ok := rcObj.(*apiv1.ReplicationController)
 		if !ok {
-			return 0, fmt.Errorf("Failed to parse Replication Controller")
+			return 0, fmt.Errorf("failed to parse Replication Controller")
 		}
 		if rc.Spec.Replicas == nil || *rc.Spec.Replicas == 0 {
 			return 0, fmt.Errorf("replication controller %s/%s has no replicas config", creator.Namespace, creator.Name)
@@ -309,7 +309,7 @@ func (f *podsEvictionRestrictionFactoryImpl) getReplicaCount(creator podReplicaC
 		}
 		rs, ok := rsObj.(*appsv1.ReplicaSet)
 		if !ok {
-			return 0, fmt.Errorf("Failed to parse Replicaset")
+			return 0, fmt.Errorf("failed to parse Replicaset")
 		}
 		if rs.Spec.Replicas == nil || *rs.Spec.Replicas == 0 {
 			return 0, fmt.Errorf("replica set %s/%s has no replicas config", creator.Namespace, creator.Name)
@@ -326,7 +326,7 @@ func (f *podsEvictionRestrictionFactoryImpl) getReplicaCount(creator podReplicaC
 		}
 		ss, ok := ssObj.(*appsv1.StatefulSet)
 		if !ok {
-			return 0, fmt.Errorf("Failed to parse StatefulSet")
+			return 0, fmt.Errorf("failed to parse StatefulSet")
 		}
 		if ss.Spec.Replicas == nil || *ss.Spec.Replicas == 0 {
 			return 0, fmt.Errorf("stateful set %s/%s has no replicas config", creator.Namespace, creator.Name)
@@ -343,7 +343,7 @@ func (f *podsEvictionRestrictionFactoryImpl) getReplicaCount(creator podReplicaC
 		}
 		ds, ok := dsObj.(*appsv1.DaemonSet)
 		if !ok {
-			return 0, fmt.Errorf("Failed to parse DaemonSet")
+			return 0, fmt.Errorf("failed to parse DaemonSet")
 		}
 		if ds.Status.NumberReady == 0 {
 			return 0, fmt.Errorf("daemon set %s/%s has no number ready pods", creator.Namespace, creator.Name)
@@ -381,13 +381,13 @@ func setUpInformer(kubeClient kube_client.Interface, kind controllerKind) (cache
 		informer = appsinformer.NewDaemonSetInformer(kubeClient, apiv1.NamespaceAll,
 			resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	default:
-		return nil, fmt.Errorf("Unknown controller kind: %v", kind)
+		return nil, fmt.Errorf("unknown controller kind: %v", kind)
 	}
 	stopCh := make(chan struct{})
 	go informer.Run(stopCh)
 	synced := cache.WaitForCacheSync(stopCh, informer.HasSynced)
 	if !synced {
-		return nil, fmt.Errorf("Failed to sync %v cache.", kind)
+		return nil, fmt.Errorf("failed to sync %v cache", kind)
 	}
 	return informer, nil
 }
