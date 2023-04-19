@@ -31,6 +31,7 @@ import (
 	vpa_lister "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/listers/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/updater/eviction"
+	inplaceupdate "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/updater/inplace-update"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/updater/priority"
 	metrics_updater "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/updater"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/status"
@@ -56,6 +57,7 @@ type updater struct {
 	podLister                    v1lister.PodLister
 	eventRecorder                record.EventRecorder
 	evictionFactory              eviction.PodsEvictionRestrictionFactory
+	updateFactory                inplaceupdate.ContainersUpdateRestrictionFactory
 	recommendationProcessor      vpa_api_util.RecommendationProcessor
 	evictionAdmission            priority.PodEvictionAdmission
 	priorityProcessor            priority.PriorityProcessor
@@ -84,13 +86,19 @@ func NewUpdater(
 	evictionRateLimiter := getRateLimiter(evictionRateLimit, evictionRateBurst)
 	factory, err := eviction.NewPodsEvictionRestrictionFactory(kubeClient, minReplicasForEvicition, evictionToleranceFraction)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create eviction restriction factory: %v", err)
+		return nil, fmt.Errorf("failed to create eviction restriction factory: %v", err)
+	}
+	var updateFactory inplaceupdate.ContainersUpdateRestrictionFactory
+	updateFactory, err = inplaceupdate.NewContainersUpdateRestrictionFactory(kubeClient, recommendationProcessor)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create patch restriction factory: %v", err)
 	}
 	return &updater{
 		vpaLister:                    vpa_api_util.NewVpasLister(vpaClient, make(chan struct{}), namespace),
 		podLister:                    newPodLister(kubeClient, namespace),
 		eventRecorder:                newEventRecorder(kubeClient),
 		evictionFactory:              factory,
+		updateFactory:                updateFactory,
 		recommendationProcessor:      recommendationProcessor,
 		evictionRateLimiter:          evictionRateLimiter,
 		evictionAdmission:            evictionAdmission,
@@ -197,35 +205,36 @@ func (u *updater) RunOnce(ctx context.Context) {
 		vpaSize := len(livePods)
 		controlledPodsCounter.Add(vpaSize, vpaSize)
 		evictionLimiter := u.evictionFactory.NewPodsEvictionRestriction(livePods, vpa)
+		updateLimiter := u.updateFactory.NewContainersUpdateRestriction(vpa)
 		podsForUpdate := u.getPodsUpdateOrder(filterNonEvictablePods(livePods, evictionLimiter), vpa)
 		evictablePodsCounter.Add(vpaSize, len(podsForUpdate))
 
-		withEvictable := false
-		withEvicted := false
+		withUpdatable := false
+		withUpdated := false
 		for _, pod := range podsForUpdate {
-			withEvictable = true
+			withUpdatable = true
 			if !evictionLimiter.CanEvict(pod) {
 				continue
 			}
 			err := u.evictionRateLimiter.Wait(ctx)
 			if err != nil {
-				klog.Warningf("evicting pod %v failed: %v", pod.Name, err)
+				klog.Warningf("updating pod %v failed: %v", pod.Name, err)
 				return
 			}
-			klog.V(2).Infof("evicting pod %v", pod.Name)
-			evictErr := evictionLimiter.Evict(pod, u.eventRecorder)
-			if evictErr != nil {
-				klog.Warningf("evicting pod %v failed: %v", pod.Name, evictErr)
+			klog.V(2).Infof("updating pod %v", pod.Name)
+			updateErr := updateLimiter.Update(pod)
+			if updateErr != nil {
+				klog.Warningf("updating pod %v failed: %v", pod.Name, updateErr)
 			} else {
-				withEvicted = true
+				withUpdated = true
 				metrics_updater.AddEvictedPod(vpaSize)
 			}
 		}
 
-		if withEvictable {
+		if withUpdatable {
 			vpasWithEvictablePodsCounter.Add(vpaSize, 1)
 		}
-		if withEvicted {
+		if withUpdated {
 			vpasWithEvictedPodsCounter.Add(vpaSize, 1)
 		}
 	}
