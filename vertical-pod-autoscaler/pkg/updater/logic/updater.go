@@ -224,7 +224,7 @@ func (u *updater) RunOnce(ctx context.Context) {
 			klog.V(2).Infof("updating pod %v", pod.Name)
 			updateErr := updateLimiter.Update(pod)
 			if updateErr != nil {
-				klog.Warningf("updating pod %v failed: %v", pod.Name, updateErr)
+				klog.Errorf("updating pod %v failed: %v", pod.Name, updateErr)
 			} else {
 				withUpdated = true
 				metrics_updater.AddEvictedPod(vpaSize)
